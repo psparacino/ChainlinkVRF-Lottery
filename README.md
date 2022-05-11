@@ -1,0 +1,1 @@
+a basic lottery on xDai, incorporting Chainlink Randomness, price oracles, keepers
