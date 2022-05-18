@@ -1,10 +1,28 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.10;
+   
+pragma solidity ^0.6.6;
 
-import "../node_modules/@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./interfaces/UniswapInterfaces.sol";
 
-contract FlashLottery {
+import 'hardhat/console.sol';
+
+interface IUniswapV2Callee {
+    function uniswapV2Call(
+        address sender,
+        uint amount0,
+        uint amount1,
+        bytes calldata data
+    ) external;
+}
+contract FlashLottery is IUniswapV2Callee {
+
+    address private constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address private constant UniswapV2Factory = 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f;
+    //  sushi Router 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F
+
 
     address[] public playerPool; // players in current lottery
     mapping(address => uint) players; //player 
@@ -64,6 +82,7 @@ contract FlashLottery {
         require(playerPool.length > 0, "no one has joined the lottery yet");
 
         uint index = notRandomGenerator() % playerPool.length;
+        console.log(index, "index");
         address winner = playerPool[index];
         uint prizeAmount = prizePool * 85 /100;
         uint lotteryNumber = lotteryHistory.length;
@@ -81,11 +100,14 @@ contract FlashLottery {
 
         emit lotteryComplete(winner, prizeAmount, lotteryNumber);
 
+        return (winner, prizeAmount);
+
     }
 
     //replace eventually with Chainlink VRF
     //  https://betterprogramming.pub/how-to-generate-truly-random-numbers-in-solidity-and-blockchain-9ced6472dbdf
     function notRandomGenerator() public view returns(uint){
+        
         return uint(keccak256(abi.encodePacked(block.difficulty, block.timestamp, playerPool)));
     }
 
@@ -101,6 +123,44 @@ contract FlashLottery {
     // ******************
     // FlashSwap Functions
     // ******************
+
+
+    function flashSwapArb(address _tokenBorrow, uint _amount) external {
+        address pair = IUniswapV2Factory(UniswapV2Factory).getPair(_tokenBorrow, WETH);
+        require(pair != address(0), "!pair");
+        address token0 = IUniswapV2Pair(pair).token0();
+        address token1 = IUniswapV2Pair(pair).token1();
+        uint256 amount0Out = _tokenBorrow == token0 ? _amount : 0;
+        uint256 amount1Out = _tokenBorrow == token1 ? _amount : 0;
+        bytes memory data = abi.encode(_tokenBorrow, _amount);
+        IUniswapV2Pair(pair).swap(amount0Out, amount1Out, address(this), data);
+
+    }
+
+    function uniswapV2Call(
+        address _sender,
+        uint256 _amount0,
+        uint256 _amount1,
+        bytes calldata _data
+    ) external override {
+        address token0 = IUniswapV2Pair(msg.sender).token0();
+        address token1 = IUniswapV2Pair(msg.sender).token1();
+        // call uniswapv2factory to getpair 
+        address pair = IUniswapV2Factory(UniswapV2Factory).getPair(token0, token1);
+        require(msg.sender == pair, "caller is not pair contract");
+        (address tokenBorrow, uint amount) = abi.decode(_data, (address, uint));
+        console.log(amount, "amount");
+        
+        uint fee = ((amount *3) / 997) + 1;
+        uint amountToRepay = amount + fee;
+        IERC20(tokenBorrow).transfer(pair, amountToRepay);
+    }
+
+    function _calculateRepayment(uint256 owedAmount) internal pure returns (uint256)
+    {
+        uint256 fee = ((owedAmount * 3) / 997) + 1;
+        return owedAmount + fee;
+    }
   
 
 }

@@ -1,5 +1,6 @@
-const { expect } = require("chai");
+const { expect, should } = require("chai");
 const { ethers, waffle } = require("hardhat");
+// import { ERC20, WETH9 } from "typechain";
 const LotteryABI = require('../artifacts/contracts/FlashLottery.sol/FlashLottery.json').abi;
 
 
@@ -10,6 +11,7 @@ describe ("Core Lottery Functions", function() {
     let addr2;
     let addr3;
     const entryPrice = .0086;
+    const provider = waffle.provider;
 
     before (async() => {
         const LotteryFactory = await ethers.getContractFactory('FlashLottery');
@@ -21,16 +23,32 @@ describe ("Core Lottery Functions", function() {
         
     })
 
-    it("address can join lottery", async () => {
+    it("players can join lottery", async () => {
 
         await LotteryContract.connect(addr1).joinPool(4, {value: ethers.utils.parseEther(`${(entryPrice * 4)}`)})
         await LotteryContract.connect(addr2).joinPool(10, {value: ethers.utils.parseEther(`${(entryPrice * 10)}`)})
         await LotteryContract.connect(addr3).joinPool(25, {value: ethers.utils.parseEther(`${(entryPrice * 25)}`)})
 
+        const playerArray = await LotteryContract.getPlayerPool()
 
-        console.log(await LotteryContract.getPlayerPool(), "player pool")
+        const contractBalance = await provider.getBalance(LotteryContract.address)
+
+        expect(ethers.utils.formatEther(contractBalance)).to.equal('0.3354');
+        expect(playerArray.length).to.equal(3);
         
     })
+
+    it("random number generation", async () => {
+        const number = await LotteryContract.notRandomGenerator();
+        console.log((number % 10000000000000000 ), "number" )
+        expect(number.value).to.not.equal(undefined || '')      
+    })
+
+
+    
+
+
+
 
 
 })
