@@ -11,48 +11,94 @@ describe ("FlashSwap Tests", function() {
     let addr1;
     let addr2;
     let addr3;
-    const provider = waffle.provider;
+    const provider = ethers.provider;
+
+    const DECIMALS = 18
+    // const USDCHolder = "0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE";
     const USDCHolder = "0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE";
-    const USDCAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-    const borrowAmount = 10000000000000; // 1000
+    const DAIHolder = "0x6F6C07d80D0D433ca389D336e6D1feBEA2489264";
+    const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+    const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
+
 
     before (async() => {
         const LotteryFactory = await ethers.getContractFactory('FlashLottery');
         // sample feed address
-        LotteryContract = await LotteryFactory.deploy('0x6b175474e89094c44da98b954eedeac495271d0f');  
+        LotteryContract = await LotteryFactory.deploy('0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f','0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F');  
         await LotteryContract.deployed();
 
         [owner, addr1, addr2, addr3] = await ethers.getSigners();
         
     })
 
-    it("flashSwap Attempt", async () => {
+    it("flashSwapArb Attempt", async () => {
+
         await hre.network.provider.request({
             method: "hardhat_impersonateAccount",
             params: [USDCHolder],
         });
+
         const impersonateSigner = await ethers.getSigner(USDCHolder);
 
+        await hre.network.provider.request({
+            method: "hardhat_impersonateAccount",
+            params: [DAIHolder],
+        });
+
+        const impersonateDAISigner = await ethers.getSigner(DAIHolder);
+        
+
         // Token Borrowed
-        const USDCContract = new ethers.Contract(USDCAddress, ERC20ABI, impersonateSigner)
-        const fee = Math.round(((borrowAmount * 3) / 997)) + 1;
+        const USDCContract = new ethers.Contract(USDC, ERC20ABI, impersonateSigner)
+        const DAIContract = new ethers.Contract(DAI, ERC20ABI, impersonateDAISigner)
 
-        console.log(fee, "fee")
+        await USDCContract.connect(impersonateSigner).transfer(LotteryContract.address, 627915817099)
+        await DAIContract.connect(impersonateDAISigner).transfer(LotteryContract.address, 1593109897874121)
 
-        await USDCContract.connect(impersonateSigner).transfer(LotteryContract.address, fee)
+        console.log("LotteryContract USDC balance is:", (await USDCContract.balanceOf(LotteryContract.address)).toString());
+        console.log("LotteryContract DAI balance is:", (await DAIContract.balanceOf(LotteryContract.address)).toString());
+        console.log("DAIContract DAI balance is:", (await DAIContract.balanceOf(DAIContract.address)).toString());
+        console.log("USDCContract USDC balance is:", (await USDCContract.balanceOf(USDCContract.address)).toString());
 
-        const beforeBalance = await USDCContract.balanceOf(LotteryContract.address);
+        const borrowAmount = ethers.utils.parseUnits("50.0", DECIMALS);
 
-        console.log(beforeBalance, "balance before")
 
-        await LotteryContract.flashSwapArb(USDCContract.address, borrowAmount);
+        await LotteryContract.flashSwapArb(DAI, USDC, 0 , 1000);
+
+        
+    }
+    
+
+    // it("flashSwap Attempt", async () => {
+    //     await hre.network.provider.request({
+    //         method: "hardhat_impersonateAccount",
+    //         params: [USDCHolder],
+    //     });
+    //     const impersonateSigner = await ethers.getSigner(USDCHolder);
+
+    //     // Token Borrowed
+    //     const USDCContract = new ethers.Contract(USDC, ERC20ABI, impersonateSigner)
+    //     const fee = Math.round(((borrowAmount * 3) / 997)) + 1;
+
+    //     console.log(fee, "fee")
+
+    //     await USDCContract.connect(impersonateSigner).transfer(LotteryContract.address, fee)
+
+    //     const beforeBalance = await USDCContract.balanceOf(LotteryContract.address);
+
+    //     console.log(beforeBalance, "balance before")
+
+    //     await LotteryContract.flashSwapArb(USDCContract.address, borrowAmount);
 
         
 
-        const updatedBalance = await USDCContract.balanceOf(LotteryContract.address);
-        console.log(updatedBalance, "balance new")
+    //     const updatedBalance = await USDCContract.balanceOf(LotteryContract.address);
+    //     console.log(updatedBalance, "balance new")
         
-    })
+    // }
+    
+    
+    )
 
     
 

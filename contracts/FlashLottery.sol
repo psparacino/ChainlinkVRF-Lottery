@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: MIT
 
-   
 pragma solidity ^0.6.6;
 
-import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@chainlink/contracts/src/v0.6/VRFConsumerBase.sol";
+import './UniswapV2Library.sol';
+import "./interfaces/IERC20.sol";
 import "./interfaces/UniswapInterfaces.sol";
+import './interfaces/IUniswapV2Router02.sol';
 
 import 'hardhat/console.sol';
+
+// https://github.com/Uniswap/v2-periphery/blob/master/contracts/interfaces/IERC20.sol
+// https://github.com/jklepatch/eattheblocks/blob/master/screencast/298-arbitrage-uniswap-sushiswap/contracts/UniswapV2Library.sol
+// https://github.com/AlexNi245/moonbot-v1/blob/main/contracts/Executor.sol
 
 interface IUniswapV2Callee {
     function uniswapV2Call(
@@ -19,9 +24,12 @@ interface IUniswapV2Callee {
 }
 contract FlashLottery is IUniswapV2Callee {
 
-    address private constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address private constant UniswapV2Factory = 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f;
+    // address private constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    // address private constant UniswapV2Factory = 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f;
     //  sushi Router 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F
+    address public factory;
+    uint constant deadline = 100000 days;
+    IUniswapV2Router02 public sushiRouter;
 
 
     address[] public playerPool; // players in current lottery
@@ -30,7 +38,6 @@ contract FlashLottery is IUniswapV2Callee {
     uint public prizePool;
 
     uint constant maxEntriesPerPlayer = 50;
-    AggregatorV3Interface internal priceFeed;
 
     Lottery[] public lotteryHistory;
 
@@ -55,10 +62,11 @@ contract FlashLottery is IUniswapV2Callee {
         _;
     }
 
-    constructor(address aggregatorAddress) {
-        admin = msg.sender;
-        priceFeed = AggregatorV3Interface(aggregatorAddress);
-    }
+  constructor(address _factory, address _sushiRouter) public {
+    factory = _factory;  
+    sushiRouter = IUniswapV2Router02(_sushiRouter);
+    admin = msg.sender;
+  }
 
     // ******************
     // Lottery Functions
@@ -125,42 +133,69 @@ contract FlashLottery is IUniswapV2Callee {
     // ******************
 
 
-    function flashSwapArb(address _tokenBorrow, uint _amount) external {
-        address pair = IUniswapV2Factory(UniswapV2Factory).getPair(_tokenBorrow, WETH);
-        require(pair != address(0), "!pair");
-        address token0 = IUniswapV2Pair(pair).token0();
-        address token1 = IUniswapV2Pair(pair).token1();
-        uint256 amount0Out = _tokenBorrow == token0 ? _amount : 0;
-        uint256 amount1Out = _tokenBorrow == token1 ? _amount : 0;
-        bytes memory data = abi.encode(_tokenBorrow, _amount);
-        IUniswapV2Pair(pair).swap(amount0Out, amount1Out, address(this), data);
+    function flashSwapArb(address token0, address token1, uint amount0, uint amount1) external {
+        address pair = IUniswapV2Factory(factory).getPair(token0, token1);
+        require(pair != address(0), "pair doesn't exist");
+        bytes memory data = abi.encode(token0, amount0, token1, amount1);
+        IUniswapV2Pair(pair).swap(amount0, amount1, address(this), data);
 
     }
 
     function uniswapV2Call(
         address _sender,
-        uint256 _amount0,
+        uint256 _amount0, 
         uint256 _amount1,
         bytes calldata _data
     ) external override {
+
+        address[] memory path = new address[](2);
+
+        uint amountToken = _amount0 == 0 ? _amount1 : _amount0;
+
         address token0 = IUniswapV2Pair(msg.sender).token0();
         address token1 = IUniswapV2Pair(msg.sender).token1();
+        // console.log(token0, token1, "checks");
         // call uniswapv2factory to getpair 
-        address pair = IUniswapV2Factory(UniswapV2Factory).getPair(token0, token1);
-        require(msg.sender == pair, "caller is not pair contract");
-        (address tokenBorrow, uint amount) = abi.decode(_data, (address, uint));
-        console.log(amount, "amount");
-        
-        uint fee = ((amount *3) / 997) + 1;
-        uint amountToRepay = amount + fee;
-        IERC20(tokenBorrow).transfer(pair, amountToRepay);
-    }
 
-    function _calculateRepayment(uint256 owedAmount) internal pure returns (uint256)
-    {
-        uint256 fee = ((owedAmount * 3) / 997) + 1;
-        return owedAmount + fee;
-    }
-  
+        require(msg.sender == UniswapV2Library.pairFor(factory, token0, token1), 'caller is not pair contract'); 
 
+        path[0] = _amount0 == 0 ? token1 : token0;
+        path[1] = _amount0 == 0 ? token0 : token1;
+
+        IERC20 token = IERC20(_amount0 == 0 ? token1 : token0);
+
+        token.approve(address(sushiRouter), amountToken);
+
+        console.log("_amount0:", _amount0);
+        console.log("_amount1:", _amount1);
+
+
+        uint amountRequired = UniswapV2Library.getAmountsIn(
+        factory, 
+        amountToken,  
+        path
+        )[0]; 
+
+        console.log("AmountToken:", amountToken);
+        console.log("AmountRequired:", amountRequired);
+        console.log("Path[0]:", path[0]);
+        console.log("Path[1]:", path[1]);
+
+        uint amountReceived = sushiRouter.swapExactTokensForTokens(
+        amountToken, 
+        amountRequired, 
+        path, 
+        msg.sender, 
+        deadline
+        )[1];
+
+        console.log(amountReceived, "amountReceived");
+        // console.log(tx.origin, admin, address(this), msg.sender);
+        IERC20 otherToken = IERC20(_amount0 == 0 ? token0 : token1);
+        otherToken.transfer(msg.sender, amountRequired);
+        console.log(((amountReceived - amountRequired)), "profit");
+        otherToken.transfer(admin, 1);
+
+
+    }
 }

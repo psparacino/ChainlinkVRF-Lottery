@@ -5,6 +5,7 @@ pragma solidity ^0.6.6;
 import './interfaces/UniswapInterfaces.sol';
 
 import "./SafeMath.sol";
+import 'hardhat/console.sol';
 
 library UniswapV2Library {
     using SafeMath for uint;
@@ -52,12 +53,14 @@ library UniswapV2Library {
     }
 
     // given an output amount of an asset and pair reserves, returns a required input amount of the other asset
-    function getAmountIn(uint amountOut, uint reserveIn, uint reserveOut) internal pure returns (uint amountIn) {
+    function getAmountIn(uint amountOut, uint reserveIn, uint reserveOut) internal view returns (uint amountIn) {
         require(amountOut > 0, 'UniswapV2Library: INSUFFICIENT_OUTPUT_AMOUNT');
         require(reserveIn > 0 && reserveOut > 0, 'UniswapV2Library: INSUFFICIENT_LIQUIDITY');
         uint numerator = reserveIn.mul(amountOut).mul(1000);
         uint denominator = reserveOut.sub(amountOut).mul(997);
+        console.log(numerator, denominator, "num/denom");
         amountIn = (numerator / denominator).add(1);
+        console.log(amountIn, "amountIn"); 
     }
 
     // performs chained getAmountOut calculations on any number of pairs
@@ -75,9 +78,14 @@ library UniswapV2Library {
     function getAmountsIn(address factory, uint amountOut, address[] memory path) internal view returns (uint[] memory amounts) {
         require(path.length >= 2, 'UniswapV2Library: INVALID_PATH');
         amounts = new uint[](path.length);
+        
         amounts[amounts.length - 1] = amountOut;
+        console.log(amounts[0], amounts[1], "amounts"); 
         for (uint i = path.length - 1; i > 0; i--) {
+            console.log(path[i - 1], "path[i-1]");
             (uint reserveIn, uint reserveOut) = getReserves(factory, path[i - 1], path[i]);
+            // console.log(amounts[i], "amounts[i]");
+            console.log(reserveIn, reserveOut, "reserves"); 
             amounts[i - 1] = getAmountIn(amounts[i], reserveIn, reserveOut);
         }
     }

@@ -16,7 +16,7 @@ describe ("Core Lottery Functions", function() {
     before (async() => {
         const LotteryFactory = await ethers.getContractFactory('FlashLottery');
         // sample feed address
-        LotteryContract = await LotteryFactory.deploy('0x6b175474e89094c44da98b954eedeac495271d0f');  
+        LotteryContract = await LotteryFactory.deploy('0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f','0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F');  
         await LotteryContract.deployed();
 
         [owner, addr1, addr2, addr3] = await ethers.getSigners();
