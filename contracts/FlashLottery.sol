@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.10;
+pragma solidity ^0.8.10;
 
 import "../node_modules/@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import 'hardhat/console.sol';
 
 contract FlashLottery {
 
     address[] public playerPool; // players in current lottery
     mapping(address => uint) players; //player 
+    uint public entries;
     address admin;
     uint public prizePool;
 
     uint constant maxEntriesPerPlayer = 50;
-    AggregatorV3Interface internal priceFeed;
+    // AggregatorV3Interface internal priceFeed;
 
     Lottery[] public lotteryHistory;
 
@@ -21,7 +23,6 @@ contract FlashLottery {
         uint numberOfPlayers;
         uint totalValueWon;
         address winner;
-        bool flashDecision;
     }
 
     
@@ -29,7 +30,7 @@ contract FlashLottery {
     // xDai data feeds: https://docs.chain.link/docs/data-feeds-gnosis-chain/
 
     event playerJoined(address player, uint numberOfEntries);
-    event lotteryComplete (address winner, uint amount, uint lotteryNumber);
+    event LotteryComplete(address winner, uint amount, uint lotteryNumber);
 
     // Modifiers
     modifier adminOnly() {
@@ -39,7 +40,7 @@ contract FlashLottery {
 
     constructor(address aggregatorAddress) {
         admin = msg.sender;
-        priceFeed = AggregatorV3Interface(aggregatorAddress);
+        // priceFeed = AggregatorV3Interface(aggregatorAddress);
     }
 
     // ******************
@@ -54,13 +55,14 @@ contract FlashLottery {
             playerPool.push(msg.sender);
         }
 
+        entries += numberOfEntries;
         players[msg.sender] += 1;
         prizePool += (.0086 ether * numberOfEntries);
         emit playerJoined(msg.sender, numberOfEntries);
 
     }
 
-    function processLottery() public adminOnly returns(address, uint) {
+    function processLottery() public adminOnly {
         require(playerPool.length > 0, "no one has joined the lottery yet");
 
         uint index = notRandomGenerator() % playerPool.length;
@@ -68,18 +70,25 @@ contract FlashLottery {
         uint prizeAmount = prizePool * 85 /100;
         uint lotteryNumber = lotteryHistory.length;
 
-        Lottery memory lottery = Lottery(lotteryNumber, playerPool.length, prizeAmount, winner, false);
+        // console.log("lottery winner (contract):", winner);
+        // console.log("prize amount in Wei (contract):", prizeAmount);
+
+        Lottery memory lottery = Lottery(lotteryNumber, playerPool.length, prizeAmount, winner);
 
         lotteryHistory.push(lottery);
 
+        (bool success,)= winner.call{value: prizeAmount}("");
+        require(success, "transfer of winning funds not successful");
 
         for (uint i = 0; i< playerPool.length ; i++){
             players[playerPool[i]] = 0;
         }
+        
         prizePool = 0;
         playerPool = new address[](0);
+        entries = 0;
 
-        emit lotteryComplete(winner, prizeAmount, lotteryNumber);
+        emit LotteryComplete(winner, prizeAmount, lotteryNumber);
 
     }
 
@@ -96,6 +105,19 @@ contract FlashLottery {
     function getPlayerPool() public view returns(address[] memory) {
         return playerPool;
     }
+
+    // function getLotteryHistory() public view returns(Lottery[] memory) {
+    //     Lottery[] memory history;
+    //     for (uint i = 0; i < lotteryHistory.length; i++) {
+    //         history[i] = lotteryHistory[i];
+    //     }
+    //     return history;
+    // }
+
+    function getLotteryHistory() public view returns(Lottery[] memory) {
+        return lotteryHistory;
+    }
+
 
 
     // ******************
