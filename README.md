@@ -1,1 +1,1 @@
-a basic lottery on xDai, incorporting Chainlink Randomness, price oracles, keepers
+An admin-controlled Lottery Contract incorporating Chainlink's VRF contracts for true randomness
