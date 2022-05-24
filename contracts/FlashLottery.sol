@@ -29,10 +29,6 @@ contract FlashLottery is VRFConsumerBase {
         address winner;
     }
 
-    
-
-    // xDai data feeds: https://docs.chain.link/docs/data-feeds-gnosis-chain/
-
     event playerJoined(address player, uint numberOfEntries);
     event LotteryComplete(address winner, uint amount, uint lotteryNumber);
     event RandomnessRequested(bytes32 requestId,uint256 lotteryNumber);
@@ -151,10 +147,6 @@ contract FlashLottery is VRFConsumerBase {
         emit RandomnessRequested(requestId, lotteryHistory.length);
     }
 
-
-
-    //replace eventually with Chainlink VRF
-    //  https://betterprogramming.pub/how-to-generate-truly-random-numbers-in-solidity-and-blockchain-9ced6472dbdf
     function notRandomGenerator() public view returns(uint){
         return uint(keccak256(abi.encodePacked(block.difficulty, block.timestamp, playerPool)));
     }
