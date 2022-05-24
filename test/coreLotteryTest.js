@@ -1,25 +1,40 @@
 const { expect, assert } = require("chai");
-const { ethers, waffle } = require("hardhat");
+const { ethers, waffle, getChainId, deployments } = require("hardhat");
 const LotteryABI = require('../artifacts/contracts/FlashLottery.sol/FlashLottery.json').abi;
+
+const { config, autoFundCheck } = require("../config/link.config");
 
 
 describe ("Core Lottery Functions", function() {
     let LotteryContract;
+    let lotteryContract;
     let owner;
     let addr1;
     let addr2;
     let addr3;
     let entries;
+    let LinkToken;
+    let linkToken;
+    let chainId;
     const entryPrice = .0086;
     const provider = waffle.provider;
 
     before (async() => {
-        const LotteryFactory = await ethers.getContractFactory('FlashLottery');
-        // sample feed address
-        LotteryContract = await LotteryFactory.deploy('0x6b175474e89094c44da98b954eedeac495271d0f');  
-        await LotteryContract.deployed();
-
+        chainId = await getChainId();
         [owner, addr1, addr2, addr3] = await ethers.getSigners();
+        
+        // const LotteryFactory = await ethers.getContractFactory('FlashLottery');
+        // LotteryContract = await LotteryFactory.deploy('0x6b175474e89094c44da98b954eedeac495271d0f');  
+        // await LotteryContract.deployed();
+
+        await deployments.fixture(["main"]);
+        LinkToken = await deployments.get("LinkToken");
+        linkToken = await ethers.getContractAt("LinkToken", LinkToken.address);
+        lotteryContract = await deployments.get("FlashLottery");
+        LotteryContract = await ethers.getContractAt(
+          "FlashLottery",
+          lotteryContract.address
+        );
 
         
     })
@@ -34,9 +49,53 @@ describe ("Core Lottery Functions", function() {
         
     })
 
+    it("Should emit an event when requesting randomness", async () => {
+        const networkName = config[chainId].name;
+        const additionalMessage = " --linkaddress " + linkToken.address;
+        if (
+          await autoFundCheck(
+            LotteryContract.address,
+            networkName,
+            linkToken.address,
+            additionalMessage
+          )
+        ) {
+          await hre.run("fund-link", {
+            contract: LotteryContract.address,
+            linkaddress: linkToken.address,
+          });
+        }
+        
+        await LotteryContract.connect(addr1).joinPool(11, {
+          value: ethers.utils.parseEther("0.0946"),
+        });
+        await LotteryContract.connect(addr2).joinPool(11, {
+            value: ethers.utils.parseEther("0.0946"),
+          });
+        await expect(LotteryContract.processLotteryExternal()).to.emit(
+          LotteryContract,
+          "RandomnessRequested"
+        );
+      });
+
     it("50 players join lottery, winner chosen", async () => {
         [owner, addr1, addr2, addr3] = await ethers.getSigners();
         const entryInWei = ethers.utils.parseEther(entryPrice.toString())
+        const networkName = config[chainId].name;
+        const additionalMessage = " --linkaddress " + linkToken.address;
+        if (
+          await autoFundCheck(
+            LotteryContract.address,
+            networkName,
+            linkToken.address,
+            additionalMessage
+          )
+        ) {
+          await hre.run("fund-link", {
+            contract: LotteryContract.address,
+            linkaddress: linkToken.address,
+          });
+        }
 
         for (let i = 0; i < 50; i++) {
 
